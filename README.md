@@ -9,12 +9,23 @@ upstream release only needs a rebuild.
 
 ## Status
 
-Work in progress; not usable yet.
+The image boots and streams under Wings-like conditions (`tests/run-like-wings.sh`: UID 988,
+tmpfs `/tmp`, Wings' dropped capabilities, `no-new-privileges`, PID limit), and survives a
+`^C` stop plus an image update on the same data (`tests/restart.sh`). Not yet: the egg JSON,
+the GHCR publish/rebuild workflow, and a test on a real Pelican node.
 
-## Plan
+## Layout
 
-1. Inspect how the official image starts and what needs root.
-2. Entrypoint and supervisord config that run as `container`, data in `/home/container`.
-3. Station streaming ports taken from the server's Pelican allocations.
-4. Build and push the image to GHCR; write the egg JSON.
-5. Test on one node: create a station, stream, restart, reinstall.
+- `Dockerfile`: flattens the official image and runs `rootfs/egg/build.sh` on it.
+- `rootfs/egg/entrypoint.sh`: per-boot setup as the runtime UID, then AzuraCast's own `my_init`.
+- `rootfs/egg/ready.sh` + `rootfs/etc/supervisor/full.conf.d/egg-ready.conf`: prints
+  `AzuraCast is ready on port N` once the web port answers (the egg's startup-done line).
+- `NOTES.md`: why each piece works the way it does.
+
+## Local test
+
+```bash
+docker build -t azuracast-egg:dev .
+bash tests/run-like-wings.sh
+bash tests/restart.sh
+```

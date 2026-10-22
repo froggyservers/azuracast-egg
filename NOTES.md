@@ -116,6 +116,27 @@ allocations are not exposed as environment variables.
 | Self-signed on a second allocation | fallback only: browser warnings |
 | **TLS terminated in front (Froggy's subdomain proxy), plain HTTP inside** | **chosen** where the host has a proxy; HTTP on the allocation otherwise |
 
+## Shared network
+
+Wings puts every server on a node on one Docker network, so anything listening on `0.0.0.0`
+inside the container is reachable by other customers' servers, allocation or not. Upstream
+relies on its compose network being private: Centrifugo's HTTP API and admin are
+`insecure = true`, Valkey has no password. The build binds Valkey, MariaDB and Centrifugo to
+`127.0.0.1`; only nginx (`SERVER_PORT`) and SFTPGo (AzuraCast logins) listen on all
+interfaces.
+
+## Found while testing
+
+- Image paths owned by the service users (`/etc/valkey/valkey.conf` is `640 valkey`): the build
+  makes everything not owned by root readable by any user; the few paths services write
+  (`/var/cache/liquidsoap`, `/var/log/{mysql,valkey,liquidsoap}`, `/var/lib/{valkey,nginx}`) are
+  relinked like the rest.
+- PHP-FPM chowns its sockets to group `www-data`, which the runtime user isn't in (and Docker
+  computes supplementary groups before our group file exists): `listen.owner/group` removed.
+- `sftpgo` carries the `cap_net_bind_service` file capability; Wings drops that capability, so
+  the kernel refuses to exec it (EPERM). The build strips file capabilities from all binaries,
+  like the setuid bits.
+
 ## Secrets
 
 Upstream ships `MYSQL_PASSWORD=azur4c457` for everyone. The entrypoint generates a random one on
