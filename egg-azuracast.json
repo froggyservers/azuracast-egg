@@ -1,0 +1,89 @@
+{
+    "_comment": "AzuraCast for Pelican. Source: https://github.com/froggyservers/azuracast-egg",
+    "meta": {
+        "version": "PLCN_v3",
+        "update_url": null
+    },
+    "exported_at": "2026-10-22T00:00:00+00:00",
+    "name": "AzuraCast",
+    "author": "froggyservers@gmail.com",
+    "uuid": "b3c42e9a-85e1-4c09-8b8a-ad34b74821e6",
+    "description": "Web radio station manager (AzuraCast). The web UI, streams and web DJ all use the primary port.",
+    "image": null,
+    "tags": ["radio"],
+    "features": [],
+    "docker_images": {
+        "AzuraCast (stable)": "ghcr.io/froggyservers/azuracast-egg:stable"
+    },
+    "file_denylist": [],
+    "startup_commands": {
+        "Default": "/egg/entrypoint.sh"
+    },
+    "config": {
+        "files": {},
+        "startup": {
+            "done": "AzuraCast is ready on port"
+        },
+        "logs": {},
+        "stop": "^C"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/bash\n# Nothing to download: the image contains AzuraCast, and the first start creates all data\n# under /home/container. Reinstalling keeps existing data.\nmkdir -p /mnt/server\necho \"AzuraCast is set up on first start.\"\n",
+            "container": "ghcr.io/parkervcp/installers:debian",
+            "entrypoint": "bash"
+        }
+    },
+    "variables": [
+        {
+            "sort": 1,
+            "name": "Max upload size",
+            "description": "Largest file that can be uploaded, e.g. 50M or 1G.",
+            "env_variable": "PHP_MAX_FILE_SIZE",
+            "default_value": "50M",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": ["required", "string", "regex:/^[0-9]+[KMG]$/"]
+        },
+        {
+            "sort": 2,
+            "name": "HTTPS port",
+            "description": "An extra allocation for direct HTTPS (self-signed). Empty: off.",
+            "env_variable": "AZURACAST_HTTPS_PORT",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": ["nullable", "integer", "between:1024,65535"]
+        },
+        {
+            "sort": 3,
+            "name": "SFTP port",
+            "description": "Reachable only if this port is one of the server's allocations.",
+            "env_variable": "AZURACAST_SFTP_PORT",
+            "default_value": "2022",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": ["required", "integer", "between:1024,65535"]
+        },
+        {
+            "sort": 4,
+            "name": "Station ports from",
+            "description": "First port of a range of allocations for direct station ports. Empty: automatic.",
+            "env_variable": "AUTO_ASSIGN_PORT_MIN",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": ["nullable", "integer", "between:1024,65535"]
+        },
+        {
+            "sort": 5,
+            "name": "Station ports to",
+            "description": "Last port of that range. Empty: 500 ports from the first.",
+            "env_variable": "AUTO_ASSIGN_PORT_MAX",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": false,
+            "rules": ["nullable", "integer", "between:1024,65535"]
+        }
+    ]
+}

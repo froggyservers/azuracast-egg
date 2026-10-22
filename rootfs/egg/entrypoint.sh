@@ -80,7 +80,39 @@ if [ -z "${AUTO_ASSIGN_PORT_MIN:-}" ]; then
   else
     export AUTO_ASSIGN_PORT_MIN=8000 AUTO_ASSIGN_PORT_MAX=8499
   fi
+elif [ -z "${AUTO_ASSIGN_PORT_MAX:-}" ]; then
+  export AUTO_ASSIGN_PORT_MAX=$(( AUTO_ASSIGN_PORT_MIN + 499 ))
 fi
+
+# Sizing from the server's limits, not the node's hardware.
+cpu_limit() {
+  local quota period
+  if [ -r /sys/fs/cgroup/cpu.max ]; then
+    read -r quota period < /sys/fs/cgroup/cpu.max
+  elif [ -r /sys/fs/cgroup/cpu/cpu.cfs_quota_us ]; then
+    quota="$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us)" period="$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us)"
+  fi
+  if [ -n "${quota:-}" ] && [ "$quota" != max ] && [ "$quota" -gt 0 ]; then
+    echo $(( (quota + period - 1) / period ))
+  else
+    local n; n="$(nproc)"
+    echo $(( n < 8 ? n : 8 ))
+  fi
+}
+export NGINX_WORKER_PROCESSES="${NGINX_WORKER_PROCESSES:-$(cpu_limit)}"
+# PHP-FPM children use ~64 MB each; leave ~768 MB for MariaDB, Valkey and the stations.
+if [ -z "${PHP_FPM_MAX_CHILDREN:-}" ]; then
+  mem="${SERVER_MEMORY:-0}"
+  if [ "$mem" -gt 0 ]; then
+    children=$(( (mem - 768) / 64 ))
+    PHP_FPM_MAX_CHILDREN=$(( children < 4 ? 4 : (children > 20 ? 20 : children) ))
+  else
+    PHP_FPM_MAX_CHILDREN=20
+  fi
+  export PHP_FPM_MAX_CHILDREN
+fi
+export PHP_MAX_FILE_SIZE="${PHP_MAX_FILE_SIZE:-50M}"
+export NGINX_CLIENT_MAX_BODY_SIZE="${NGINX_CLIENT_MAX_BODY_SIZE:-$PHP_MAX_FILE_SIZE}"
 
 # Per-boot runtime files (the image's paths are symlinks into $RT).
 mkdir -p "$RT"/run/mysqld "$RT"/run/redis "$RT"/nginx/sites-available "$RT"/nginx/sites-enabled \
@@ -102,5 +134,6 @@ for d in nginx_client nginx_fastcgi nginx_cache sftpgo_temp; do
   ln -s "$HC/.cache/$d" "/tmp/$d"
 done
 
-echo "[egg] Running as azuracast ($(id -u):$(id -g)), web on port $AZURACAST_HTTP_PORT"
+echo "[egg] Running as azuracast ($(id -u):$(id -g)), web on port $AZURACAST_HTTP_PORT," \
+  "$NGINX_WORKER_PROCESSES nginx workers, $PHP_FPM_MAX_CHILDREN PHP workers"
 exec /usr/local/bin/my_init --no-main-command

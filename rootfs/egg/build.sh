@@ -106,6 +106,13 @@ sed -i -E 's/^\[http_server\]$/[http_server]\naddress = "127.0.0.1"\ninternal_ad
 grep -q '^internal_address = "127.0.0.1"' /var/azuracast/centrifugo/config.toml.tmpl \
   || { echo "build: centrifugo bind not set" >&2; exit 1; }
 
+# nginx's "auto" means one worker per host core, whatever the server's CPU limit; let the
+# entrypoint size it.
+sed -i -E 's/^worker_processes auto;$/worker_processes {{ default .Env.NGINX_WORKER_PROCESSES "auto" }};/' \
+  /etc/nginx/nginx.conf.tmpl
+grep -q 'NGINX_WORKER_PROCESSES' /etc/nginx/nginx.conf.tmpl \
+  || { echo "build: nginx worker_processes not templated" >&2; exit 1; }
+
 # usermod needs root; the entrypoint does this instead.
 rm /etc/my_init.d/00_setup_user.sh
 

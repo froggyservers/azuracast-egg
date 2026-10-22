@@ -1,0 +1,105 @@
+name: Build image
+
+# Rebuilds when this repo's image code changes, and daily when AzuraCast's stable image has a
+# new digest. Nothing is pushed unless the Wings-like tests pass on the new image.
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - rootfs/**
+      - tests/**
+      - .github/workflows/build.yml
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Build even if upstream hasn't changed
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-image
+  cancel-in-progress: false
+
+env:
+  UPSTREAM: ghcr.io/azuracast/azuracast:stable
+  IMAGE: ghcr.io/${{ github.repository_owner }}/azuracast-egg
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compare upstream with the last build
+        id: check
+        run: |
+          set -euo pipefail
+          upstream="$(docker buildx imagetools inspect "$UPSTREAM" --format '{{json .Manifest}}' | jq -r .digest)"
+          # .Image is one config for a single-platform image, or a map of them for an index.
+          current="$(docker buildx imagetools inspect "$IMAGE:stable" --format '{{json .Image}}' 2>/dev/null \
+            | jq -r 'if has("config") then . else (to_entries[0].value) end
+                     | .config.Labels["org.opencontainers.image.base.digest"] // empty' || true)"
+          echo "upstream=$upstream" >> "$GITHUB_OUTPUT"
+          echo "upstream $upstream, last build based on ${current:-nothing}"
+          if [ "${{ github.event_name }}" = schedule ] && [ "$upstream" = "$current" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = workflow_dispatch ] && [ "${{ inputs.force }}" != true ] \
+               && [ "$upstream" = "$current" ]; then
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Free disk space (the image is ~3 GB, built twice)
+        if: steps.check.outputs.build == 'true'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af >/dev/null
+          df -h /
+
+      - name: Build
+        if: steps.check.outputs.build == 'true'
+        run: |
+          set -euo pipefail
+          digest="${{ steps.check.outputs.upstream }}"
+          docker build \
+            --build-arg "UPSTREAM=ghcr.io/azuracast/azuracast@$digest" \
+            --label "org.opencontainers.image.base.name=$UPSTREAM" \
+            --label "org.opencontainers.image.base.digest=$digest" \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            --label "org.opencontainers.image.licenses=AGPL-3.0" \
+            -t azuracast-egg:ci .
+
+      - name: Test like Wings (boot, stream port, restart on the same data)
+        if: steps.check.outputs.build == 'true'
+        run: |
+          bash tests/run-like-wings.sh azuracast-egg:ci
+          bash tests/restart.sh azuracast-egg:ci
+
+      - name: Push
+        if: steps.check.outputs.build == 'true'
+        run: |
+          set -euo pipefail
+          version="$(docker run --rm --entrypoint sed azuracast-egg:ci -nE \
+            "s/.*STABLE_VERSION = '([^']+)'.*/\1/p" /var/azuracast/www/backend/src/Version.php)"
+          [ -n "$version" ] || { echo "AzuraCast version not found" >&2; exit 1; }
+          for tag in stable "$version" "stable-$(date -u +%Y%m%d)"; do
+            docker tag azuracast-egg:ci "$IMAGE:$tag"
+            docker push "$IMAGE:$tag"
+          done
+          echo "Pushed AzuraCast $version as $IMAGE:stable" >> "$GITHUB_STEP_SUMMARY"

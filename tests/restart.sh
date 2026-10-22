@@ -21,8 +21,18 @@ echo "stopped after $(( $(date +%s) - start ))s, exit code $(docker inspect -f '
 KEEP_DATA=1 bash "$(dirname "$0")/run-like-wings.sh" "$IMAGE"
 
 secret_after="$(docker exec "$NAME" cat /home/container/.secrets/mysql_password)"
-[ "$secret_before" = "$secret_after" ] && echo "DB password kept" || { echo "DB password CHANGED"; exit 1; }
-docker logs "$NAME" 2>&1 | grep -q "Initializing database files" && { echo "DB was re-initialised"; exit 1; }
+if [ "$secret_before" != "$secret_after" ]; then
+  echo "DB password CHANGED"
+  exit 1
+fi
+echo "DB password kept"
+if docker logs "$NAME" 2>&1 | grep -q "Initializing database files"; then
+  echo "DB was re-initialised"
+  exit 1
+fi
 echo "DB not re-initialised"
-docker exec "$NAME" azuracast_cli azuracast:radio:restart 2>&1 | grep -q 'OK' && echo "stations restart: OK"
-echo "stations before: $stations_before"
+if ! docker exec "$NAME" azuracast_cli azuracast:radio:restart 2>&1 | grep -q 'OK'; then
+  echo "stations restart failed"
+  exit 1
+fi
+echo "stations restart: OK (before: $stations_before)"

@@ -7,12 +7,22 @@ changed: it runs as Pelican's non-root `container` user and keeps all data in `/
 PHP, Liquidsoap, Icecast and their libraries stay exactly as AzuraCast ships them, so a new
 upstream release only needs a rebuild.
 
+## Install
+
+1. In Pelican: Admin -> Eggs -> Import, upload `egg-azuracast.json`.
+2. Create a server with at least 2 GB RAM. One allocation is enough: the web UI, streams
+   (`/listen/...`) and the web DJ all use it. Open `http://<allocation>/` for AzuraCast's setup.
+
+The image `ghcr.io/froggyservers/azuracast-egg:stable` is rebuilt by
+`.github/workflows/build.yml` whenever AzuraCast's `stable` image changes (checked daily),
+and only pushed after the Wings-like tests pass. Servers get it on their next restart.
+
 ## Status
 
 The image boots and streams under Wings-like conditions (`tests/run-like-wings.sh`: UID 988,
 tmpfs `/tmp`, Wings' dropped capabilities, `no-new-privileges`, PID limit), and survives a
-`^C` stop plus an image update on the same data (`tests/restart.sh`). Not yet: the egg JSON,
-the GHCR publish/rebuild workflow, and a test on a real Pelican node.
+`^C` stop plus an image update on the same data (`tests/restart.sh`). Not yet tested on a real
+Pelican node.
 
 ## Layout
 

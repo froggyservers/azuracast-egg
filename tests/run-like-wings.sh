@@ -3,6 +3,7 @@
 # dropped capabilities, no-new-privileges, a PID limit, a TTY and a volume at /home/container.
 # Usage: tests/run-like-wings.sh [image] [uid:gid] [host port]
 #   KEEP_DATA=1 reuses the data volume from the previous run (restart test).
+#   CPUS=2 sets a CPU limit, as Wings does for servers with one.
 set -euo pipefail
 export MSYS_NO_PATHCONV=1   # Git Bash on Windows would rewrite /home/container
 
@@ -30,7 +31,7 @@ docker run -d --name "$NAME" -t \
   --cap-drop setpcap --cap-drop mknod --cap-drop audit_write --cap-drop net_raw \
   --cap-drop dac_override --cap-drop fowner --cap-drop fsetid --cap-drop net_bind_service \
   --cap-drop sys_chroot --cap-drop setfcap \
-  --pids-limit 512 --memory 2g \
+  --pids-limit 512 --memory 2g ${CPUS:+--cpus "$CPUS"} \
   "$IMAGE" >/dev/null
 
 # Wait for the egg's ready line (what Pelican waits for), a failure, or the container exiting.
