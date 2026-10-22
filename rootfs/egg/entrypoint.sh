@@ -21,14 +21,21 @@ write_identity() {
     { print }' /egg/orig/group > "$RT/etc/group"
 }
 
-# Started as root (plain Docker, or a node configured that way): run as AzuraCast's usual
-# UID instead, after handing it the data.
-if [ "$(id -u)" = 0 ]; then
-  uid="${AZURACAST_PUID:-1000}" gid="${AZURACAST_PGID:-1000}"
-  write_identity "$uid" "$gid"
-  mkdir -p "$HC"
-  chown -R "$uid:$gid" "$RT" "$HC"
-  exec gosu azuracast "$0" "$@"
+# Stage 1, as PID 1: become tini (PID 1 stays, so /proc/1 belongs to the runtime user, which
+# services log to). Started as root (plain Docker, or a node configured that way), first drop
+# to AzuraCast's usual UID and hand it the data.
+if [ "${1:-}" != --under-tini ]; then
+  if [ "$(id -u)" = 0 ]; then
+    uid="${AZURACAST_PUID:-1000}" gid="${AZURACAST_PGID:-1000}"
+    write_identity "$uid" "$gid"
+    mkdir -p "$HC"
+    chown -R "$uid:$gid" "$RT" "$HC"
+    # Services reopen PID 1's stdout/stderr (/proc/1/fd/N); Docker made those (TTY or pipes)
+    # root's, so hand them over too.
+    chown "$uid:$gid" /proc/self/fd/0 /proc/self/fd/1 /proc/self/fd/2 2>/dev/null || true
+    exec gosu azuracast /usr/bin/tini -- "$0" --under-tini
+  fi
+  exec /usr/bin/tini -- "$0" --under-tini
 fi
 
 write_identity "$(id -u)" "$(id -g)"

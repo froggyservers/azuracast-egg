@@ -133,6 +133,10 @@ interfaces.
   relinked like the rest.
 - PHP-FPM chowns its sockets to group `www-data`, which the runtime user isn't in (and Docker
   computes supplementary groups before our group file exists): `listen.owner/group` removed.
+- Several services log to `/proc/1/fd/1`, which reopens PID 1's stdout (a TTY under Wings,
+  owned by the container's user). So the entrypoint is PID 1, drops root if it has it, and
+  then execs tini; when started as root it also hands its stdio over first. Tested as UID 988,
+  1500 and root.
 - `sftpgo` carries the `cap_net_bind_service` file capability; Wings drops that capability, so
   the kernel refuses to exec it (EPERM). The build strips file capabilities from all binaries,
   like the setuid bits.

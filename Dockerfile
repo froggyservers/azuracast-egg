@@ -19,4 +19,5 @@ RUN bash /egg/build.sh && rm /egg/build.sh
 ENV BASH_ENV=/egg/exec-env.sh
 
 WORKDIR /var/azuracast/www
-ENTRYPOINT ["/usr/bin/tini", "--", "/egg/entrypoint.sh"]
+# The entrypoint starts as PID 1, drops root if it has it, then execs tini (see entrypoint.sh).
+ENTRYPOINT ["/egg/entrypoint.sh"]
